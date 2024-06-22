@@ -1,7 +1,7 @@
 import streamlit as st
 from dotenv import load_dotenv
 import os
-import google.generativeai as genai
+import google-generativeai as genai
 import sqlite3
 
 # Load environment variables
