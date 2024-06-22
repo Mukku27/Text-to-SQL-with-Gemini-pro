@@ -58,7 +58,7 @@ st.title("Text to SQL")
 st.markdown("""
 <style>
     .main {
-        background-color: #f5f5f5;
+        background-color: #f5f5f6;
         padding: 20px;
         border-radius: 10px;
     }
