@@ -14,7 +14,7 @@ This repository provides a Python application that leverages Streamlit and Googl
 
 ## Requirements
 
-- Python 3.x ([Download Python](https://www.python.org/downloads/))
+- Python 3.7 or Above ([Download Python](https://www.python.org/downloads/))
 - Streamlit ([Installation Guide](https://docs.streamlit.io/get-started/installation))
 - Google Generative AI ([More Information](https://www.xda-developers.com/google-generative-ai-expands-beta-testing/))
 - Python Dotenv ([PyPI Link](https://pypi.org/project/dotenv/))
