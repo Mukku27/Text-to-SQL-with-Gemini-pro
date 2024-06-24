@@ -1,4 +1,6 @@
 import sqlite3
+import random
+from faker import Faker
 
 # Connect to the SQLite database
 connection = sqlite3.connect("student.db")
@@ -6,53 +8,61 @@ connection = sqlite3.connect("student.db")
 # Create a cursor object to interact with the database
 cursor = connection.cursor()
 
-# Create the STUDENT table if it doesn't already exist
+# Drop the existing STUDENT table if it exists
+cursor.execute("DROP TABLE IF EXISTS STUDENT")
+
+# Create the STUDENT table with additional columns
 table_info = """
 CREATE TABLE IF NOT EXISTS STUDENT (
+    ID INTEGER PRIMARY KEY AUTOINCREMENT,
     NAME VARCHAR(50),
+    AGE INTEGER,
+    GENDER VARCHAR(10),
     CLASS VARCHAR(25),
-    SECTION VARCHAR(25)
+    SECTION VARCHAR(25),
+    GPA REAL,
+    EMAIL VARCHAR(50),
+    ADDRESS VARCHAR(100)
 );
 """
 cursor.execute(table_info)
 
+# Generate sample data using Faker
+fake = Faker()
+
+def generate_student_data(num_students):
+    student_data = []
+    for _ in range(num_students):
+        name = fake.name()
+        age = random.randint(14, 18)
+        gender = random.choice(['Male', 'Female', 'Other'])
+        class_ = random.choice(['9th', '10th', '11th', '12th'])
+        section = random.choice(list('ABCDEFGHIJKLM'))
+        gpa = round(random.uniform(2.0, 4.0), 2)
+        email = fake.email()
+        address = fake.address().replace('\n', ', ')
+        student_data.append((name, age, gender, class_, section, gpa, email, address))
+    return student_data
+
 # Insert initial sample data into the STUDENT table
-initial_insert_data = """
-INSERT INTO STUDENT (NAME, CLASS, SECTION) VALUES ('John Doe', '10th', 'A');
-INSERT INTO STUDENT (NAME, CLASS, SECTION) VALUES ('Jane Smith', '11th', 'B');
-INSERT INTO STUDENT (NAME, CLASS, SECTION) VALUES ('Alice Johnson', '12th', 'C');
-"""
-cursor.executescript(initial_insert_data)
+initial_students = generate_student_data(1000)
 
-# Add 10 more students
-additional_students = [
-    ('Bob Brown', '9th', 'D'),
-    ('Charlie Davis', '10th', 'E'),
-    ('David Evans', '11th', 'F'),
-    ('Emily Foster', '12th', 'G'),
-    ('Frank Gordon', '10th', 'H'),
-    ('Grace Harris', '9th', 'I'),
-    ('Henry Ingram', '11th', 'J'),
-    ('Isabella Jackson', '12th', 'K'),
-    ('Kevin Lewis', '9th', 'L'),
-    ('Mia Nelson', '10th', 'M')
-]
-
-for name, class_, section in additional_students:
-    cursor.execute("""
-        INSERT INTO STUDENT (NAME, CLASS, SECTION) VALUES (?,?,?);
-    """, (name, class_, section))
+# Insert the generated data into the table
+cursor.executemany("""
+    INSERT INTO STUDENT (NAME, AGE, GENDER, CLASS, SECTION, GPA, EMAIL, ADDRESS) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+""", initial_students)
 
 # Commit the changes and close the connection
 connection.commit()
 connection.close()
 
-# Now, let's retrieve and print the data from the STUDENT table
+# Now, let's retrieve and print a few rows from the STUDENT table to verify the data
 # Re-establish the connection and cursor
 re_connection = sqlite3.connect("student.db")
 re_cursor = re_connection.cursor()
 
-select_data = "SELECT * FROM STUDENT;"
+select_data = "SELECT * FROM STUDENT LIMIT 10;"
 re_cursor.execute(select_data)
 
 # Fetch all rows from the result
