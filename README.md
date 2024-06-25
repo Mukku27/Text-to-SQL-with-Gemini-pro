@@ -1,15 +1,15 @@
-
 # Text to SQL with Streamlit and Google Generative AI
 
 ## Introduction
 
-This repository provides a Python application that leverages Streamlit and Google Generative AI (Gemini Pro) to convert natural language questions into SQL queries. Users can interact with the application through a web interface to get real-time results from a sample SQLite database.
+This repository provides a Python application that leverages Streamlit and Google Generative AI (Gemini Pro) to convert natural language questions into SQL queries. Users can interact with the application through a web interface to get real-time results from a sample SQLite database and modify the database using the Gemini Pro API key.
 
 ## Key Features
 
 - **Natural Language to SQL Conversion:** Ask questions about the student data in plain English, and the system will automatically generate the corresponding SQL query.
+- **Database Modifications:** Perform modifications in the database using the Gemini Pro API key.
 - **Interactive Web Interface:** Streamlit creates a user-friendly web interface for easy interaction and visualization of results.
-- **Database Integration:** Connects to a sample student database (`student.db`) for retrieving and displaying data.
+- **Database Integration:** Connects to a sample student database (`student.db`) for retrieving, displaying, and modifying data.
 - **Error Handling:** Provides informative messages in case of invalid input or database errors.
 
 ## Requirements
@@ -74,11 +74,17 @@ streamlit run main.py
 2. Click the "Submit" button.
 3. The application will generate the corresponding SQL query and display it.
 4. If successful, it will also fetch and display the query results from the student database.
+5. To modify the database, provide the necessary input and execute the corresponding SQL commands through the web interface.
 
 ### Example
 
 - **Question:** "Which students are in the 10th class?"
 - **Generated SQL Query:** `SELECT * FROM STUDENT WHERE CLASS="10th";`
+
+### Database Modification Example
+
+- **Task:** "Add a new student to the database."
+- **Generated SQL Query:** `INSERT INTO STUDENT (NAME, CLASS) VALUES ("John Doe", "10th");`
 
 ## Additional Notes
 
@@ -101,3 +107,5 @@ For any questions or feedback, please contact vemulapallimukesh@gmail.com.
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for more details.
+
+
