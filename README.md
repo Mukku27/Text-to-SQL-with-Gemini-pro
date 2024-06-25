@@ -1,4 +1,4 @@
-"
+
 # Text to SQL with Streamlit and Google Generative AI
 
 ## Introduction
