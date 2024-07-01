@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-from io import BytesIO
 from dotenv import load_dotenv
 import os
 import google.generativeai as genai
@@ -58,50 +57,46 @@ def map_columns(excel_columns, db_columns):
     return mappings
 
 # Function to process the Excel file and update the database
-def process_excel_file(uploaded_file, db_path):
-    # Read the Excel file
+def process_excel_file(uploaded_file, db_path, action):
     df = pd.read_excel(uploaded_file)
-    
-    # Print column names for debugging
     st.write("Column names in the uploaded file:", df.columns.tolist())
-    
-    # Get existing columns from the database
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("PRAGMA table_info(STUDENT)")
     existing_columns = [info[1] for info in cursor.fetchall()]
-    
-    # Map Excel columns to database columns
+
     column_mappings = map_columns(df.columns, existing_columns)
-    
-    # Add missing columns to the database
+
     for excel_col, db_col in column_mappings.items():
         if db_col not in existing_columns:
             add_column_to_db(db_path, db_col)
             existing_columns.append(db_col)
-    
-    # Process each row in the DataFrame
+
     for index, row in df.iterrows():
-        # Create a dictionary of values with correct column names
         mapped_row = {column_mappings[col]: value for col, value in row.items()}
         
-        # Check if the student already exists
-        cursor.execute("SELECT * FROM STUDENT WHERE NAME=?", (mapped_row.get('NAME'),))
-        existing_student = cursor.fetchone()
+        if action == "remove":
+            cursor.execute("DELETE FROM STUDENT WHERE NAME=?", (mapped_row.get('NAME'),))
         
-        if existing_student:
-            # Update existing student
+        elif action == "modify":
             set_clause = ", ".join([f"{col}=?" for col in mapped_row.keys()])
             values = tuple(mapped_row.values())
             cursor.execute(f"UPDATE STUDENT SET {set_clause} WHERE NAME=?", values + (mapped_row.get('NAME'),))
+        
         else:
-            # Insert new student
-            columns = ", ".join(mapped_row.keys())
-            placeholders = ", ".join(["?" for _ in mapped_row])
-            values = tuple(mapped_row.values())
-            cursor.execute(f"INSERT INTO STUDENT ({columns}) VALUES ({placeholders})", values)
-    
-    # Commit changes and close connection
+            cursor.execute("SELECT * FROM STUDENT WHERE NAME=?", (mapped_row.get('NAME'),))
+            existing_student = cursor.fetchone()
+            if existing_student:
+                set_clause = ", ".join([f"{col}=?" for col in mapped_row.keys()])
+                values = tuple(mapped_row.values())
+                cursor.execute(f"UPDATE STUDENT SET {set_clause} WHERE NAME=?", values + (mapped_row.get('NAME'),))
+            else:
+                columns = ", ".join(mapped_row.keys())
+                placeholders = ", ".join(["?" for _ in mapped_row])
+                values = tuple(mapped_row.values())
+                cursor.execute(f"INSERT INTO STUDENT ({columns}) VALUES ({placeholders})", values)
+
     conn.commit()
     conn.close()
 
@@ -214,7 +209,7 @@ st.markdown("""
 # Sidebar
 st.sidebar.title("Menu")
 st.sidebar.markdown("Navigate through the options:")
-page = st.sidebar.selectbox("Choose a page", ["Text to SQL", "Student Dashboard", "Modify Student Data", "Excel Upload"])
+page = st.sidebar.selectbox("Choose a page", ["Text to SQL", "Student Dashboard", "Modify Student Data"])
 
 if page == "Text to SQL":
     # Streamlit App for Text to SQL
@@ -264,6 +259,20 @@ elif page == "Student Dashboard":
         if not results.empty:
             st.write("Students Data:")
             st.dataframe(results)
+
+            # Plotting insights
+            st.write("Class Distribution:")
+            class_count = results['CLASS'].value_counts().reset_index()
+            class_count.columns = ['CLASS', 'COUNT']
+            fig = px.bar(class_count, x='CLASS', y='COUNT', title="Class Distribution")
+            st.plotly_chart(fig)
+
+            st.write("Gender Distribution:")
+            gender_count = results['GENDER'].value_counts().reset_index()
+            gender_count.columns = ['GENDER', 'COUNT']
+            fig = px.pie(gender_count, names='GENDER', values='COUNT', title="Gender Distribution")
+            st.plotly_chart(fig)
+            
         else:
             st.write("No data available.")
     except Exception as e:
@@ -277,23 +286,13 @@ elif page == "Modify Student Data":
     st.markdown('<div class="main">', unsafe_allow_html=True)
     st.markdown('<div class="title">Modify Student Data</div>', unsafe_allow_html=True)
     st.markdown('<div class="modification-section">', unsafe_allow_html=True)
+
     modification_type = st.radio("Select Modification Type", ["Add Student", "Remove Student", "Update Student"])
+
     if modification_type == "Add Student":
-        st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('<div class="input-section">', unsafe_allow_html=True)
-        uploaded_file = st.file_uploader("Upload Excel file", type=['xls', 'xlsx'])
-        if uploaded_file:
-            st.write("Processing Excel file...")
-            process_excel_file(uploaded_file, 'student.db')
-            st.write("Data updated successfully!")
-        else:
-            st.write("Please upload an Excel file.")
-        st.markdown('</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('<div class="input-section">', unsafe_allow_html=True)
-        question = st.text_input("Enter your question:")
-        if st.button("Submit"):
+        question = st.text_input("Enter your command to add a student:")
+        if st.button("Submit Add Command"):
             if question:
                 st.markdown('</div>', unsafe_allow_html=True)
                 st.markdown('<div class="result-section">', unsafe_allow_html=True)
@@ -312,22 +311,88 @@ elif page == "Modify Student Data":
                     st.markdown('</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
             else:
-                st.write("Please enter a question.")
+                st.write("Please enter a command.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown('<div class="upload-section">', unsafe_allow_html=True)
+        uploaded_file = st.file_uploader("Upload Excel file to add students", type=['xls', 'xlsx'])
+        if uploaded_file:
+            st.write("Processing Excel file...")
+            process_excel_file(uploaded_file, 'student.db', action="add")
+            st.write("Data updated successfully!")
         else:
-            st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+            st.write("Please upload an Excel file.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-elif page == "Excel Upload":
-    st.markdown('<div class="main">', unsafe_allow_html=True)
-    st.markdown('<div class="title">Excel Upload</div>', unsafe_allow_html=True)
-    st.markdown('<div class="upload-section">', unsafe_allow_html=True)
-    uploaded_file = st.file_uploader("Upload Excel file", type=['xls', 'xlsx'])
-    if uploaded_file:
-        st.write("Processing Excel file...")
-        process_excel_file(uploaded_file, 'student.db')
-        st.write("Data updated successfully!")
-    else:
-        st.write("Please upload an Excel file.")
+    elif modification_type == "Remove Student":
+        st.markdown('<div class="input-section">', unsafe_allow_html=True)
+        question = st.text_input("Enter your command to remove a student:")
+        if st.button("Submit Remove Command"):
+            if question:
+                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('<div class="result-section">', unsafe_allow_html=True)
+                st.write("Generating SQL query...")
+                sql_query = generate_sql_query(modification_prompt, question)
+                st.write(f"Generated SQL query: {sql_query}")
+
+                st.write("Executing SQL command...")
+                db_path = 'student.db'
+                try:
+                    execute_sql_query(sql_query, db_path)
+                    st.write("Command executed successfully!")
+                except Exception as e:
+                    st.markdown('<div class="error">', unsafe_allow_html=True)
+                    st.write(f"Error: {e}")
+                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.write("Please enter a command.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown('<div class="upload-section">', unsafe_allow_html=True)
+        uploaded_file = st.file_uploader("Upload Excel file to remove students", type=['xls', 'xlsx'])
+        if uploaded_file:
+            st.write("Processing Excel file...")
+            process_excel_file(uploaded_file, 'student.db', action="remove")
+            st.write("Data updated successfully!")
+        else:
+            st.write("Please upload an Excel file.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    elif modification_type == "Update Student":
+        st.markdown('<div class="input-section">', unsafe_allow_html=True)
+        question = st.text_input("Enter your command to update a student:")
+        if st.button("Submit Update Command"):
+            if question:
+                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('<div class="result-section">', unsafe_allow_html=True)
+                st.write("Generating SQL query...")
+                sql_query = generate_sql_query(modification_prompt, question)
+                st.write(f"Generated SQL query: {sql_query}")
+
+                st.write("Executing SQL command...")
+                db_path = 'student.db'
+                try:
+                    execute_sql_query(sql_query, db_path)
+                    st.write("Command executed successfully!")
+                except Exception as e:
+                    st.markdown('<div class="error">', unsafe_allow_html=True)
+                    st.write(f"Error: {e}")
+                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.write("Please enter a command.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown('<div class="upload-section">', unsafe_allow_html=True)
+        uploaded_file = st.file_uploader("Upload Excel file to update students", type=['xls', 'xlsx'])
+        if uploaded_file:
+            st.write("Processing Excel file...")
+            process_excel_file(uploaded_file, 'student.db', action="modify")
+            st.write("Data updated successfully!")
+        else:
+            st.write("Please upload an Excel file.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
     st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
