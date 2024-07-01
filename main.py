@@ -252,7 +252,7 @@ elif page == "Student Dashboard":
     db_path = 'student.db'
     
     if st.button("Refresh Data"):
-        st.experimental_rerun()
+        st.rerun()
     
     try:
         conn = sqlite3.connect(db_path)
