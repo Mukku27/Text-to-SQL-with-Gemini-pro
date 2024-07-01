@@ -1,11 +1,11 @@
 import streamlit as st
+import pandas as pd
+import sqlite3
+from io import BytesIO
 from dotenv import load_dotenv
 import os
 import google.generativeai as genai
-import sqlite3
-import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 
 # Load environment variables
 load_dotenv()
@@ -14,10 +14,16 @@ load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 # Function to load Google Gemini Pro model
-def get_gemini_response(question, prompt):
+def get_gemini_response(prompt):
     model = genai.GenerativeModel('gemini-pro')
-    response = model.generate_content([prompt, question])
-    return response.text 
+    response = model.generate_content([prompt])
+    return response.text
+
+# Function to generate SQL query using prompt and question
+def generate_sql_query(prompt, question):
+    full_prompt = f"{prompt}\n{question}"
+    sql_query = get_gemini_response(full_prompt).strip()
+    return sql_query
 
 # Function to execute an SQL query on the database
 def execute_sql_query(sql, db):
@@ -33,6 +39,71 @@ def read_sql_query(sql, db):
     df = pd.read_sql_query(sql, conn)
     conn.close()
     return df
+
+# Function to add a column to the database
+def add_column_to_db(db_path, column_name):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(f"ALTER TABLE STUDENT ADD COLUMN {column_name} TEXT")
+    conn.commit()
+    conn.close()
+
+# Function to map Excel columns to database columns using Gemini Pro API
+def map_columns(excel_columns, db_columns):
+    mappings = {}
+    for excel_col in excel_columns:
+        prompt = f"Find the best match for the column '{excel_col}' from the following options: {', '.join(db_columns)}"
+        best_match = get_gemini_response(prompt).strip()
+        mappings[excel_col] = best_match
+    return mappings
+
+# Function to process the Excel file and update the database
+def process_excel_file(uploaded_file, db_path):
+    # Read the Excel file
+    df = pd.read_excel(uploaded_file)
+    
+    # Print column names for debugging
+    st.write("Column names in the uploaded file:", df.columns.tolist())
+    
+    # Get existing columns from the database
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(STUDENT)")
+    existing_columns = [info[1] for info in cursor.fetchall()]
+    
+    # Map Excel columns to database columns
+    column_mappings = map_columns(df.columns, existing_columns)
+    
+    # Add missing columns to the database
+    for excel_col, db_col in column_mappings.items():
+        if db_col not in existing_columns:
+            add_column_to_db(db_path, db_col)
+            existing_columns.append(db_col)
+    
+    # Process each row in the DataFrame
+    for index, row in df.iterrows():
+        # Create a dictionary of values with correct column names
+        mapped_row = {column_mappings[col]: value for col, value in row.items()}
+        
+        # Check if the student already exists
+        cursor.execute("SELECT * FROM STUDENT WHERE NAME=?", (mapped_row.get('NAME'),))
+        existing_student = cursor.fetchone()
+        
+        if existing_student:
+            # Update existing student
+            set_clause = ", ".join([f"{col}=?" for col in mapped_row.keys()])
+            values = tuple(mapped_row.values())
+            cursor.execute(f"UPDATE STUDENT SET {set_clause} WHERE NAME=?", values + (mapped_row.get('NAME'),))
+        else:
+            # Insert new student
+            columns = ", ".join(mapped_row.keys())
+            placeholders = ", ".join(["?" for _ in mapped_row])
+            values = tuple(mapped_row.values())
+            cursor.execute(f"INSERT INTO STUDENT ({columns}) VALUES ({placeholders})", values)
+    
+    # Commit changes and close connection
+    conn.commit()
+    conn.close()
 
 # Defining your prompts
 sql_prompt = """
@@ -91,7 +162,7 @@ st.markdown("""
         text-align: center;
         font-size: 2.5em;
     }
-    .input-section, .dashboard-section, .modification-section {
+    .input-section, .dashboard-section, .modification-section, .upload-section {
         background-color: #2c2f36;
         padding: 15px;
         border-radius: 10px;
@@ -143,7 +214,7 @@ st.markdown("""
 # Sidebar
 st.sidebar.title("Menu")
 st.sidebar.markdown("Navigate through the options:")
-page = st.sidebar.selectbox("Choose a page", ["Text to SQL", "Student Dashboard", "Modify Student Data"])
+page = st.sidebar.selectbox("Choose a page", ["Text to SQL", "Student Dashboard", "Modify Student Data", "Excel Upload"])
 
 if page == "Text to SQL":
     # Streamlit App for Text to SQL
@@ -156,7 +227,7 @@ if page == "Text to SQL":
             st.markdown('</div>', unsafe_allow_html=True)
             st.markdown('<div class="result-section">', unsafe_allow_html=True)
             st.write("Generating SQL query...")
-            sql_query = get_gemini_response(question, sql_prompt).strip()
+            sql_query = generate_sql_query(sql_prompt, question)
             st.write(f"Generated SQL query: {sql_query}")
             
             st.write("Fetching data from the database...")
@@ -182,149 +253,81 @@ if page == "Text to SQL":
 elif page == "Student Dashboard":
     st.markdown('<div class="main">', unsafe_allow_html=True)
     st.markdown('<div class="title">Student Dashboard</div>', unsafe_allow_html=True)
-
-    # Load data
+    st.markdown('<div class="dashboard-section">', unsafe_allow_html=True)
     db_path = 'student.db'
-    df = read_sql_query("SELECT * FROM STUDENT", db_path)
-
-    # Metrics
-    col1, col2, col3, col4, col5 = st.columns(5)
-    with col1:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.markdown(f'<div class="metric-value">{df.shape[0]:,}</div>', unsafe_allow_html=True)
-        st.markdown('<div class="metric-label">Total Students</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col2:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.markdown(f'<div class="metric-value">{df["CLASS"].nunique():,}</div>', unsafe_allow_html=True)
-        st.markdown('<div class="metric-label">Total Classes</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col3:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.markdown(f'<div class="metric-value">{df["SECTION"].nunique():,}</div>', unsafe_allow_html=True)
-        st.markdown('<div class="metric-label">Total Sections</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col4:
-        avg_class_size = df.groupby('CLASS').size().mean()
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.markdown(f'<div class="metric-value">{avg_class_size:.1f}</div>', unsafe_allow_html=True)
-        st.markdown('<div class="metric-label">Avg Class Size</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col5:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.markdown(f'<div class="metric-value">{df["GENDER"].nunique()}</div>', unsafe_allow_html=True)
-        st.markdown('<div class="metric-label">Genders</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # Charts
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown('<div class="dashboard-section">', unsafe_allow_html=True)
-        st.subheader("Gender Distribution")
-        gender_counts = df['GENDER'].value_counts()
-        fig = px.pie(values=gender_counts.values, names=gender_counts.index, hole=0.3)
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='white')
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col2:
-        st.markdown('<div class="dashboard-section">', unsafe_allow_html=True)
-        st.subheader("Section-wise Distribution")
-        section_counts = df['SECTION'].value_counts()
-        fig = px.pie(values=section_counts.values, names=section_counts.index, hole=0.3)
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='white')
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="dashboard-section">', unsafe_allow_html=True)
-    st.subheader("Students per Class")
-    class_counts = df['CLASS'].value_counts().sort_values(ascending=True)
-    fig = px.bar(x=class_counts.values, y=class_counts.index, orientation='h')
-    fig.update_layout(
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='white'),
-        xaxis_title="Number of Students",
-        yaxis_title="Class"
-    )
-    st.plotly_chart(fig, use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # Existing functionality
-    st.markdown('<div class="dashboard-section">', unsafe_allow_html=True)
-    
-    # Display all students
-    st.subheader("All Students")
-    if not df.empty:
-        st.dataframe(df)
-    else:
-        st.write("No students found.")
-
-    # Search for students by name
-    st.subheader("Search Students by Name")
-    name = st.text_input("Enter student name:")
-    if st.button("Search"):
-        search_results = df[df['NAME'].str.contains(name, case=False, na=False)]
-        if not search_results.empty:
-            st.dataframe(search_results)
+    try:
+        conn = sqlite3.connect(db_path)
+        st.write("Connected to database successfully!")
+        st.write("Fetching data from the database...")
+        sql = "SELECT * FROM STUDENT"
+        results = read_sql_query(sql, db_path)
+        if not results.empty:
+            st.write("Students Data:")
+            st.dataframe(results)
         else:
-            st.write("No students found.")
-
-    # Filter students by class or section
-    st.subheader("Filter Students by Class or Section")
-    filter_class = st.text_input("Enter class:")
-    filter_section = st.text_input("Enter section:")
-    if st.button("Filter"):
-        filter_results = df[(df['CLASS'].str.contains(filter_class, case=False, na=False)) & 
-                            (df['SECTION'].str.contains(filter_section, case=False, na=False))]
-        if not filter_results.empty:
-            st.dataframe(filter_results)
-        else:
-            st.write("No students found.")
-
+            st.write("No data available.")
+    except Exception as e:
+        st.markdown('<div class="error">', unsafe_allow_html=True)
+        st.write(f"Error: {e}")
+        st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 elif page == "Modify Student Data":
-    # Streamlit App for Modifying Student Data
     st.markdown('<div class="main">', unsafe_allow_html=True)
     st.markdown('<div class="title">Modify Student Data</div>', unsafe_allow_html=True)
     st.markdown('<div class="modification-section">', unsafe_allow_html=True)
-
-    modification_prompt_text = st.text_area("Enter your modification prompt (e.g., 'A new student named John is added to the class 6th, section B, and gender Male.'):")
-    if st.button("Execute"):
-        if modification_prompt_text:
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown('<div class="result-section">', unsafe_allow_html=True)
-            st.write("Generating SQL modification query...")
-            modification_sql_query = get_gemini_response(modification_prompt_text, modification_prompt).strip()
-            st.write(f"Generated SQL query: {modification_sql_query}")
-            
-            st.write("Executing SQL query on the database...")
-            db_path = 'student.db'
-            try:
-                execute_sql_query(modification_sql_query, db_path)
-                st.write("Database modification executed successfully.")
-            except Exception as e:
-                st.markdown('<div class="error">', unsafe_allow_html=True)
-                st.write(f"Error: {e}")
-                st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+    modification_type = st.radio("Select Modification Type", ["Add Student", "Remove Student", "Update Student"])
+    if modification_type == "Add Student":
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="input-section">', unsafe_allow_html=True)
+        uploaded_file = st.file_uploader("Upload Excel file", type=['xls', 'xlsx'])
+        if uploaded_file:
+            st.write("Processing Excel file...")
+            process_excel_file(uploaded_file, 'student.db')
+            st.write("Data updated successfully!")
         else:
-            st.write("Please enter a modification prompt.")
+            st.write("Please upload an Excel file.")
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="input-section">', unsafe_allow_html=True)
+        question = st.text_input("Enter your question:")
+        if st.button("Submit"):
+            if question:
+                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('<div class="result-section">', unsafe_allow_html=True)
+                st.write("Generating SQL query...")
+                sql_query = generate_sql_query(modification_prompt, question)
+                st.write(f"Generated SQL query: {sql_query}")
+
+                st.write("Executing SQL command...")
+                db_path = 'student.db'
+                try:
+                    execute_sql_query(sql_query, db_path)
+                    st.write("Command executed successfully!")
+                except Exception as e:
+                    st.markdown('<div class="error">', unsafe_allow_html=True)
+                    st.write(f"Error: {e}")
+                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.write("Please enter a question.")
+        else:
+            st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+elif page == "Excel Upload":
+    st.markdown('<div class="main">', unsafe_allow_html=True)
+    st.markdown('<div class="title">Excel Upload</div>', unsafe_allow_html=True)
+    st.markdown('<div class="upload-section">', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("Upload Excel file", type=['xls', 'xlsx'])
+    if uploaded_file:
+        st.write("Processing Excel file...")
+        process_excel_file(uploaded_file, 'student.db')
+        st.write("Data updated successfully!")
+    else:
+        st.write("Please upload an Excel file.")
+    st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
