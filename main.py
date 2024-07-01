@@ -250,6 +250,10 @@ elif page == "Student Dashboard":
     st.markdown('<div class="title">Student Dashboard</div>', unsafe_allow_html=True)
     st.markdown('<div class="dashboard-section">', unsafe_allow_html=True)
     db_path = 'student.db'
+    
+    if st.button("Refresh Data"):
+        st.experimental_rerun()
+    
     try:
         conn = sqlite3.connect(db_path)
         st.write("Connected to database successfully!")
@@ -304,7 +308,7 @@ elif page == "Modify Student Data":
                 db_path = 'student.db'
                 try:
                     execute_sql_query(sql_query, db_path)
-                    st.write("Command executed successfully!")
+                    st.success("Student data added successfully!")
                 except Exception as e:
                     st.markdown('<div class="error">', unsafe_allow_html=True)
                     st.write(f"Error: {e}")
@@ -315,11 +319,14 @@ elif page == "Modify Student Data":
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown('<div class="upload-section">', unsafe_allow_html=True)
+        st.markdown("Please ensure your Excel file has columns matching the database (NAME, CLASS, SECTION, GENDER).")
         uploaded_file = st.file_uploader("Upload Excel file to add students", type=['xls', 'xlsx'])
         if uploaded_file:
-            st.write("Processing Excel file...")
-            process_excel_file(uploaded_file, 'student.db', action="add")
-            st.write("Data updated successfully!")
+            try:
+                process_excel_file(uploaded_file, 'student.db', action="add")
+                st.success("Data updated successfully!")
+            except Exception as e:
+                st.error(f"Error processing Excel file: {str(e)}")
         else:
             st.write("Please upload an Excel file.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -339,7 +346,7 @@ elif page == "Modify Student Data":
                 db_path = 'student.db'
                 try:
                     execute_sql_query(sql_query, db_path)
-                    st.write("Command executed successfully!")
+                    st.success("Student data removed successfully!")
                 except Exception as e:
                     st.markdown('<div class="error">', unsafe_allow_html=True)
                     st.write(f"Error: {e}")
@@ -350,11 +357,14 @@ elif page == "Modify Student Data":
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown('<div class="upload-section">', unsafe_allow_html=True)
+        st.markdown("Please ensure your Excel file has a column named 'NAME' with the names of students to remove.")
         uploaded_file = st.file_uploader("Upload Excel file to remove students", type=['xls', 'xlsx'])
         if uploaded_file:
-            st.write("Processing Excel file...")
-            process_excel_file(uploaded_file, 'student.db', action="remove")
-            st.write("Data updated successfully!")
+            try:
+                process_excel_file(uploaded_file, 'student.db', action="remove")
+                st.success("Data updated successfully!")
+            except Exception as e:
+                st.error(f"Error processing Excel file: {str(e)}")
         else:
             st.write("Please upload an Excel file.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -374,7 +384,7 @@ elif page == "Modify Student Data":
                 db_path = 'student.db'
                 try:
                     execute_sql_query(sql_query, db_path)
-                    st.write("Command executed successfully!")
+                    st.success("Student data updated successfully!")
                 except Exception as e:
                     st.markdown('<div class="error">', unsafe_allow_html=True)
                     st.write(f"Error: {e}")
@@ -385,11 +395,14 @@ elif page == "Modify Student Data":
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown('<div class="upload-section">', unsafe_allow_html=True)
+        st.markdown("Please ensure your Excel file has columns matching the database (NAME, CLASS, SECTION, GENDER).")
         uploaded_file = st.file_uploader("Upload Excel file to update students", type=['xls', 'xlsx'])
         if uploaded_file:
-            st.write("Processing Excel file...")
-            process_excel_file(uploaded_file, 'student.db', action="modify")
-            st.write("Data updated successfully!")
+            try:
+                process_excel_file(uploaded_file, 'student.db', action="modify")
+                st.success("Data updated successfully!")
+            except Exception as e:
+                st.error(f"Error processing Excel file: {str(e)}")
         else:
             st.write("Please upload an Excel file.")
         st.markdown('</div>', unsafe_allow_html=True)
